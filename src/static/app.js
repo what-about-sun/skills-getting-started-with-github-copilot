@@ -13,6 +13,9 @@ document.addEventListener("DOMContentLoaded", () => {
       // Clear loading message
       activitiesList.innerHTML = "";
 
+      // Reset activity select options
+      activitySelect.innerHTML = '<option value="">-- Select an activity --</option>';
+
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
         const activityCard = document.createElement("div");
@@ -20,13 +23,103 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const spotsLeft = details.max_participants - details.participants.length;
 
-        activityCard.innerHTML = `
+        // Header and basic info
+        const header = document.createElement('div');
+        header.innerHTML = `
           <h4>${name}</h4>
           <p>${details.description}</p>
           <p><strong>Schedule:</strong> ${details.schedule}</p>
           <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
         `;
 
+        // Participants section
+        const participantsSection = document.createElement('div');
+        participantsSection.className = 'participants-section';
+        const titleP = document.createElement('p');
+        titleP.innerHTML = '<strong>Participants:</strong>';
+        participantsSection.appendChild(titleP);
+
+        if (details.participants && details.participants.length) {
+          const ul = document.createElement('ul');
+          ul.className = 'participants-list';
+
+          details.participants.forEach(p => {
+            const li = document.createElement('li');
+            li.className = 'participant-item';
+
+            const span = document.createElement('span');
+            span.className = 'participant-email';
+            span.textContent = p;
+
+            const btn = document.createElement('button');
+            btn.className = 'participant-delete';
+            btn.setAttribute('aria-label', `Remove ${p}`);
+            btn.textContent = '✖';
+            btn.addEventListener('click', async () => {
+              if (!confirm(`Remove ${p} from ${name}?`)) return;
+              try {
+                const res = await fetch(`/activities/${encodeURIComponent(name)}/participants?email=${encodeURIComponent(p)}`, { method: 'DELETE' });
+                const body = await res.json();
+                if (res.ok) {
+                  messageDiv.textContent = body.message;
+                  messageDiv.className = 'success';
+                  messageDiv.classList.remove('hidden');
+                  setTimeout(() => messageDiv.classList.add('hidden'), 4000);
+                  fetchActivities();
+                } else {
+                  messageDiv.textContent = body.detail || 'Failed to remove participant';
+                  messageDiv.className = 'error';
+                  messageDiv.classList.remove('hidden');
+                }
+
+                  // Simple modal confirm that returns a Promise<boolean>
+                  function showConfirm(message) {
+                    return new Promise((resolve) => {
+                      const modal = document.getElementById('confirm-modal');
+                      const msg = document.getElementById('confirm-modal-message');
+                      const btnConfirm = document.getElementById('confirm-modal-confirm');
+                      const btnCancel = document.getElementById('confirm-modal-cancel');
+
+                      msg.textContent = message;
+                      modal.classList.remove('hidden');
+
+                      function cleanup() {
+                        btnConfirm.removeEventListener('click', onConfirm);
+                        btnCancel.removeEventListener('click', onCancel);
+                        modal.classList.add('hidden');
+                      }
+
+                      function onConfirm() { cleanup(); resolve(true); }
+                      function onCancel() { cleanup(); resolve(false); }
+
+                      btnConfirm.addEventListener('click', onConfirm);
+                      btnCancel.addEventListener('click', onCancel);
+                    });
+                  }
+              } catch (err) {
+                console.error('Error removing participant:', err);
+                messageDiv.textContent = 'Failed to remove participant';
+                messageDiv.className = 'error';
+                messageDiv.classList.remove('hidden');
+              }
+            });
+
+            li.appendChild(span);
+            li.appendChild(btn);
+            ul.appendChild(li);
+          });
+
+          participantsSection.appendChild(ul);
+        } else {
+          const none = document.createElement('p');
+          none.className = 'participants-none';
+          none.textContent = 'No participants yet';
+          participantsSection.appendChild(none);
+        }
+              const ok = await showConfirm(`Remove ${p} from ${name}?`);
+              if (!ok) return;
+        activityCard.appendChild(header);
+        activityCard.appendChild(participantsSection);
         activitiesList.appendChild(activityCard);
 
         // Add option to select dropdown
@@ -62,6 +155,8 @@ document.addEventListener("DOMContentLoaded", () => {
         messageDiv.textContent = result.message;
         messageDiv.className = "success";
         signupForm.reset();
+        // Refresh activities so the new participant appears without page reload
+        await fetchActivities();
       } else {
         messageDiv.textContent = result.detail || "An error occurred";
         messageDiv.className = "error";
